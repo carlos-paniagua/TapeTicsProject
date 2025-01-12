@@ -12,8 +12,8 @@ void ledOnSingle(int i);
 void ledOn();
 String getSerialCommand();
 
-void handleBLECommand(std::string value);
-void addMessageToQueue(String command);
+void handleBLECommand(const char *value);
+void addMessageToQueue(const char *command);
 void processQueueTask(void *pvParameters);
 void processBLETask(void *pvParameters);
 
@@ -41,7 +41,7 @@ void shockAnimation();
 ////////////////////////////////////////////////////////////////////
 #include <cppQueue.h>
 
-cppQueue messageQueue(sizeof(String), 1000, FIFO, false); // FIFOキューの初期化
+cppQueue messageQueue(sizeof(char *), 1000, FIFO, false); // FIFOキューの初期化
 
 // LED
 ///////////////////////////////////////////////////////////////////////
@@ -274,46 +274,60 @@ void loop()
 #endif
 }
 
-void handleBLECommand(std::string value)
+void handleBLECommand(const char *value)
 {
-  String command = String(value.c_str());
-  if (command == "run")
+  if (strcmp(value, "run") == 0)
   {
     startExecution = true;
     Serial.println("Starting execution of queued messages.");
   }
-  else if (command == "endSend")
+  else if (strcmp(value, "endSend") == 0)
   {
     Serial.print("Queue count after endSend: ");
     Serial.println(messageQueue.getCount());
   }
-  else if (command == "wave" || command == "shock" || command == "random")
+  else if (strcmp(value, "wave") == 0 || strcmp(value, "shock") == 0 || strcmp(value, "random") == 0)
   {
-    setRGB(command);
+    setRGB(value);
   }
   else
   {
-    addMessageToQueue(command);
+    Serial.println(value);
+    addMessageToQueue(value); // 他のコマンドはキューに追加
   }
 }
 
-void addMessageToQueue(String command)
+void addMessageToQueue(const char *command)
 {
   if (!messageQueue.isFull())
   {
-    String strValue = String(command.c_str());
-    int startIndex = 0;
-    int endIndex = strValue.indexOf('\n');
-    while (endIndex != -1)
+    // `command` を '\n' で分割して各行を処理
+    const char *start = command;
+    const char *end;
+
+    while ((end = strchr(start, '\n')) != nullptr) // '\n' を探して行ごとに分割
     {
-      String line = strValue.substring(startIndex, endIndex);
-      String *msg = new String(line);
+      // 行の長さを計算
+      size_t lineLength = end - start;
+
+      // 行を新しいメモリにコピー
+      char *msg = new char[lineLength + 1];
+      strncpy(msg, start, lineLength);
+      msg[lineLength] = '\0'; // 終端文字を追加
+
+      Serial.println(msg);
       messageQueue.push(&msg);
-      // Serial.print(messageQueue.getCount());
-      // Serial.print("  Queued message: ");
-      // Serial.println(line);
-      startIndex = endIndex + 1;
-      endIndex = strValue.indexOf('\n', startIndex);
+
+      // 次の行へ
+      start = end + 1;
+    }
+
+    // 最後の行（改行がない場合もあるのでそのまま追加）
+    if (*start != '\0')
+    {
+      char *msg = new char[strlen(start) + 1];
+      strcpy(msg, start);
+      messageQueue.push(&msg);
     }
   }
   else
@@ -401,8 +415,8 @@ void processBLETask(void *pvParameters)
     // BLE処理を実行
     if (deviceConnected)
     {
-      std::string value = pCharacteristic->getValue();
-      if (!value.empty())
+      const char *value = pCharacteristic->getValue().c_str();
+      if (value && strlen(value) > 0)
       {
         handleBLECommand(value);
         pCharacteristic->setValue("");

@@ -12,12 +12,11 @@ void ledOnSingle(int i);
 void ledOn();
 String getSerialCommand();
 
-void handleBLECommand(std::string value);
+void handleBLECommand(std::string value,unsigned long currentTime);
 void addMessageToQueue(String command);
 void processQueueTask(void *pvParameters);
-void processBLETask(void *pvParameters);
 
-void setRGB(String s);
+void setRGB(String s,unsigned long currenttime);
 void setAllRGB(String s);
 void printRGB();
 
@@ -32,7 +31,7 @@ void HeartBeatMode();
 void onBeatDetected();
 #endif
 
-// アニメーション
+//アニメーション
 void waveAnimation();
 void randomAnimation();
 void shockAnimation();
@@ -42,6 +41,10 @@ void shockAnimation();
 #include <cppQueue.h>
 
 cppQueue messageQueue(sizeof(String), 1000, FIFO, false); // FIFOキューの初期化
+bool isProcessing;
+unsigned long currentTaskEndTime;
+unsigned long delayval; // 適切なdelay値を設定してください
+bool isAnimating;
 
 // LED
 ///////////////////////////////////////////////////////////////////////
@@ -62,10 +65,13 @@ cppQueue messageQueue(sizeof(String), 1000, FIFO, false); // FIFOキューの初
 #define LED_COLOR_OFF (0x000000)    // LEDのカラーコード 黒
 
 CRGB leds[NUMPIXELS];
-int power[NUMMAX]; // セットごとのパワーの配列
-int red[NUMMAX];   // セットごとの赤の配列
-int green[NUMMAX]; // セットごとの緑の配列
-int blue[NUMMAX];  // セットごとの青の配列
+int power[NUMMAX];                            // セットごとのパワーの配列
+int red[NUMMAX];                              // セットごとの赤の配列
+int green[NUMMAX];                            // セットごとの緑の配列
+int blue[NUMMAX];                             // セットごとの青の配列
+unsigned long lightingDuration[NUMMAX] = {0}; // セットごとの点灯時間（秒）
+unsigned long nodeEndTime[NUMMAX] = {0};      // 各ノードの終了時間
+bool nodeProcessing[NUMMAX] = {false};        // 各ノードの処理状態
 
 bool startExecution = false; // ボタンが押されたら true になる
 
@@ -95,8 +101,7 @@ BLEServer *pServer = NULL;
 BLECharacteristic *pCharacteristic = NULL;
 bool deviceConnected = false;
 
-class MyServerCallbacks : public BLEServerCallbacks
-{
+class MyServerCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer *pServer) override
   {
     Serial.println("Client connected");
@@ -127,7 +132,7 @@ void sendDataOverBLE(const char *data)
 void initializeBLE()
 {
   BLEDevice::init(BLE_DEVICE_NAME.c_str());
-
+  
   pServer = BLEDevice::createServer();
   pServer->setCallbacks(new MyServerCallbacks());
   BLEService *pService = pServer->createService(SERVICE_UUID.c_str());
@@ -161,17 +166,17 @@ void initializeBLE()
 #ifdef USE_OSC
 #include <ArduinoOSCWiFi.h>
 
-const char *ssid = "Buffalo-G-6368";      // WiFi SSIDを設定
-const char *password = "5sxhmntn7nr7y";   // WiFi パスワードを設定
-const IPAddress ip(192, 168, 11, 43);     // デバイスの固定IPアドレス
+const char* ssid = "Buffalo-G-6368"; // WiFi SSIDを設定
+const char* password = "5sxhmntn7nr7y"; // WiFi パスワードを設定
+const IPAddress ip(192, 168, 11, 43); // デバイスの固定IPアドレス
 const IPAddress gateway(192, 168, 11, 1); // ゲートウェイのIPアドレス
 const IPAddress subnet(255, 255, 255, 0); // サブネットマスク
 
-const char *host = "192.168.11.3"; // 送信先のホストIPアドレス
-const int recv_port = 8001;        // 受信ポート番号
-const int send_port = 9001;        // 送信ポート番号
+const char* host = "192.168.11.3"; // 送信先のホストIPアドレス
+const int recv_port = 8001; // 受信ポート番号   
+const int send_port = 9001; // 送信ポート番号
 
-void sendDataOverOSC(const char *address, const char *data)
+void sendDataOverOSC(const char* address, const char* data)
 {
   OSCMessage msg(address);
   msg.add(data);
@@ -184,8 +189,7 @@ void sendDataOverOSC(const char *address, const char *data)
 void initializeOSC()
 {
   WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED)
-  {
+  while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
     Serial.println("Connecting to WiFi...");
   }
@@ -193,12 +197,12 @@ void initializeOSC()
   Serial.print("WiFi connected, IP = ");
   Serial.println(WiFi.localIP());
 
-  udp.begin(inPort);
+  udp.begin(inPort); 
   Serial.println("OSC initialized and listening");
 }
 #endif // USE_OSC
 
-// メイン処理
+//メイン処理
 ///////////////////////////////////////////////////////////////////////////
 void setup()
 {
@@ -218,7 +222,6 @@ void setup()
 
   // キュー処理タスクを起動
   xTaskCreatePinnedToCore(processQueueTask, "QueueTask", 4096, NULL, 1, NULL, 0);
-  xTaskCreatePinnedToCore(processBLETask, "BLETask", 4096, NULL, 1, NULL, 1);
 
   Serial.println("Initialize complete");
 }
@@ -226,19 +229,18 @@ void setup()
 void loop()
 {
   M5.update();
+  unsigned long currentTime = millis();
 
   // BLEからの文字列
-  // #ifdef USE_BLE
-  // if (deviceConnected)
-  // {
-  //   std::string value = pCharacteristic->getValue();
-  //   if (!value.empty())
-  //   {
-  //     handleBLECommand(value);
-  //     pCharacteristic->setValue("");
-  //   }
-  // }
-  // #endif
+#ifdef USE_BLE
+  if (deviceConnected) {
+    std::string value = pCharacteristic->getValue();
+    if (!value.empty()) {
+      handleBLECommand(value,currentTime);
+      pCharacteristic->setValue("");
+    }
+  }
+#endif
 
 #ifdef USE_SERIAL_COMMAND
   if (Serial.available() > 0)
@@ -257,7 +259,7 @@ void loop()
       else if (s == "wave" || s == "shock" || s == "random")
       {
         // Call setRGB when one of these commands is received
-        setRGB(s.c_str(), 0);
+        setRGB(s.c_str(),0);
       }
       else
       {
@@ -272,143 +274,201 @@ void loop()
     }
   }
 #endif
-}
 
-void handleBLECommand(std::string value)
-{
-  String command = String(value.c_str());
-  if (command == "run")
+  // M5Stackのボタンを押したら実行開始
+  if (M5.Btn.isPressed())
   {
     startExecution = true;
     Serial.println("Starting execution of queued messages.");
   }
-  else if (command == "endSend")
+  
+  
+  if (startExecution)
   {
+    for (int steps = 0; steps < NUMSETS; steps++)
+    {
+      if (nodeProcessing[steps] && currentTime  >= nodeEndTime[steps])
+      {
+        nodeProcessing[steps] = false;
+        nodeEndTime[steps] = 0;
+      }
+    }
+  }
+
+  delay(5);
+}
+
+void handleBLECommand(std::string value,unsigned long currentTime) {
+  String command = String(value.c_str());
+  if (command == "run") {
+    startExecution = true;
+    Serial.println("Starting execution of queued messages.");
+  } else if (command == "endSend") {
     Serial.print("Queue count after endSend: ");
     Serial.println(messageQueue.getCount());
-  }
-  else if (command == "wave" || command == "shock" || command == "random")
-  {
-    setRGB(command);
-  }
-  else
-  {
+  } else if (command == "wave" || command == "shock" || command == "random") {
+    setRGB(command, currentTime);
+  } else {
     addMessageToQueue(command);
   }
 }
 
-void addMessageToQueue(String command)
-{
+void addMessageToQueue(String command) {
   if (!messageQueue.isFull())
   {
     String strValue = String(command.c_str());
     int startIndex = 0;
     int endIndex = strValue.indexOf('\n');
+
     while (endIndex != -1)
     {
       String line = strValue.substring(startIndex, endIndex);
+
       String *msg = new String(line);
       messageQueue.push(&msg);
       // Serial.print(messageQueue.getCount());
       // Serial.print("  Queued message: ");
       // Serial.println(line);
+
       startIndex = endIndex + 1;
       endIndex = strValue.indexOf('\n', startIndex);
     }
   }
-  else
-  {
+  else {
     Serial.println("Warning: Queue is full! Unable to queue more messages.");
   }
 }
 
+// void processQueueTask(void *pvParameters)
+// {
+//   while (true) {
+//     String *msg;
+//     if (startExecution && messageQueue.peek(&msg)) {
+//       // Directly pop and retrieve the message
+//       if (messageQueue.pop(&msg)) {
+//         if (msg) {
+//           // Serial.println(messageQueue.getCount());
+//           // Serial.print(" : ");
+//           // Serial.println(*msg);
+//           setRGB(*msg, millis());  // Call your function to handle the RGB setting
+//           delete msg;    // Ensure proper memory cleanup
+//         }
+//       } 
+//       else {
+//         Serial.println("Failed to pop from the queue.");
+//         vTaskDelay(10 / portTICK_PERIOD_MS); 
+//       }
+//     }
+//     else {
+//       vTaskDelay(10 / portTICK_PERIOD_MS); // Longer delay when idle
+//     }
+//     // Check if all messages have been processed
+//     if (messageQueue.isEmpty() && startExecution) {
+//       setAllRGB("0,0,0,0,0");  // Reset or finish RGB task
+//       Serial.println("All messages processed. FINISH");
+//       startExecution = false;
+//     }
+//     delay(10);
+//   }
+// }
+
 void processQueueTask(void *pvParameters)
 {
+  String lastMessage = "";
   while (true)
   {
     if (startExecution) // ボタンが押されたらキュー処理を開始
     {
-      String *msg = nullptr;
-      if (messageQueue.pop(&msg) && msg != nullptr)
+      String *msg;
+      if (messageQueue.peek(&msg))
       {
-        Serial.print(messageQueue.getCount());
-        Serial.print(": pop from queue :");
-        Serial.println(*msg);
+        bool validFormat = true;
+        int setIndex, pwr, r, g, b;
+        float time;
 
-        String s = *msg;
-        if (s == "delay")
+        if (*msg == lastMessage)
         {
-          vTaskDelay(100 / portTICK_PERIOD_MS);
-        }
-        else
-        {
-          bool validFormat = true;
-          int setIndex, pwr, r, g, b;
-          // メッセージをカンマで分割
-          int commaIndex = 0;
-          String parameters[5]; // 6つのパラメータを期待
-          // String remaining = *msg;
-          int startIdx = 0;
-          int commaIdx = s.indexOf(',');
-
-          setIndex = s.substring(startIdx, commaIdx).toInt() - 1;
-          startIdx = commaIdx + 1;
-          commaIdx = s.indexOf(',', startIdx);
-
-          // 2. pwr
-          power[setIndex] = s.substring(startIdx, commaIdx).toInt();
-          startIdx = commaIdx + 1;
-          commaIdx = s.indexOf(',', startIdx);
-
-          // 3. r
-          red[setIndex] = s.substring(startIdx, commaIdx).toInt();
-          startIdx = commaIdx + 1;
-          commaIdx = s.indexOf(',', startIdx);
-
-          // 4. g
-          green[setIndex] = s.substring(startIdx, commaIdx).toInt();
-          startIdx = commaIdx + 1;
-          commaIdx = s.indexOf(',', startIdx);
-
-          // 5. b
-          blue[setIndex] = s.substring(startIdx, commaIdx).toInt();
-          startIdx = commaIdx + 1;
-
-          ledOnSingle(setIndex);
           delete msg;
+          messageQueue.pop(&msg);
+          continue;
+        }
+
+        // メッセージをカンマで分割
+        int commaIndex = 0;
+        String parameters[6]; // 6つのパラメータを期待
+        String remaining = *msg;
+
+        for (int i = 0; i < 6; i++) {
+          commaIndex = remaining.indexOf(',');
+          if (commaIndex == -1 && i < 5) {
+            validFormat = false;
+            break;
+          }
+
+          if (i == 5) {
+            parameters[i] = remaining;
+          } else {
+            parameters[i] = remaining.substring(0, commaIndex);
+            remaining = remaining.substring(commaIndex + 1);
+          }
+        }
+
+        // 6個のパラメータが揃っているか確認
+        if (validFormat) {
+          setIndex = parameters[0].toInt();
+          pwr = parameters[1].toInt();
+          r = parameters[2].toInt();
+          g = parameters[3].toInt();
+          b = parameters[4].toInt();
+          time = parameters[5].toFloat();
+        } else {
+          // フォーマットが無効な場合は通常のコマンドとして扱う
+          String command = *msg;
+          if (messageQueue.pop(&msg))  // キューからメッセージをポップ
+          {
+            // Serial.print(messageQueue.getCount());
+            // Serial.print("  pop from queue :");
+            // Serial.println(command);
+
+            setRGB(command, millis());  // コマンド処理関数の呼び出し
+            delete msg;  // メモリ解放
+          }
+          continue;
+        }
+
+        // 有効なフォーマットの場合はさらに処理
+        setIndex -= 1;
+        if (!nodeProcessing[setIndex] && nodeEndTime[setIndex] == 0)
+        {
+          if (messageQueue.pop(&msg))  // キューからメッセージをポップ
+          {
+            // Serial.print(messageQueue.getCount());
+            // Serial.print("  pop from queue :");
+            // Serial.println(*msg);
+
+            setRGB(*msg, millis());  // コマンド処理関数の呼び出し
+            delete msg;  // メモリ解放
+          }
         }
       }
       else
       {
-        Serial.println("Error: Failed to pop message from queue.");
+        vTaskDelay(5 / portTICK_PERIOD_MS); // キューが空の場合、再試行待機
       }
     }
+    else
+    {
+      vTaskDelay(5 / portTICK_PERIOD_MS); // ボタンが押されるのを待機
+    }
+
     // すべてのメッセージが処理されているか確認
     if (messageQueue.getCount() == 0 && startExecution)
     {
-      setAllRGB("0,0,0,0,0"); // RGBをリセット
+      setAllRGB("0,0,0,0,0");  // RGBをリセット
       Serial.println("All messages processed. FINISH");
       startExecution = false;
     }
-    vTaskDelay(5 / portTICK_PERIOD_MS); // 少し待機してループを繰り返す
-  }
-}
-
-void processBLETask(void *pvParameters)
-{
-  while (true)
-  {
-    // BLE処理を実行
-    if (deviceConnected)
-    {
-      std::string value = pCharacteristic->getValue();
-      if (!value.empty())
-      {
-        handleBLECommand(value);
-        pCharacteristic->setValue("");
-      }
-    }
-    vTaskDelay(5 / portTICK_PERIOD_MS); // 少し待機してループを繰り返す
+    delay(5); // 少し待機してループを繰り返す
   }
 }
 
@@ -451,7 +511,8 @@ String getSerialCommand()
 }
 #endif
 
-void setRGB(String s)
+// void setRGB(String s, int currenttime)
+void setRGB(String s, unsigned long currentTime)
 {
   if (s.startsWith("all"))
   {
@@ -472,18 +533,93 @@ void setRGB(String s)
     Serial.println("Random Mode");
     randomAnimation();
   }
+  else
+  {
+    // 各値をカンマ区切りでパース
+    int setIndex, pwr, r, g, b;
+    float time;
+
+    int startIdx = 0;
+    int commaIdx = s.indexOf(',');
+
+    // 1. setIndex
+    setIndex = s.substring(startIdx, commaIdx).toInt() - 1;
+    startIdx = commaIdx + 1;
+    commaIdx = s.indexOf(',', startIdx);
+
+    // 2. pwr
+    pwr = s.substring(startIdx, commaIdx).toInt();
+    startIdx = commaIdx + 1;
+    commaIdx = s.indexOf(',', startIdx);
+
+    // 3. r
+    r = s.substring(startIdx, commaIdx).toInt();
+    startIdx = commaIdx + 1;
+    commaIdx = s.indexOf(',', startIdx);
+
+    // 4. g
+    g = s.substring(startIdx, commaIdx).toInt();
+    startIdx = commaIdx + 1;
+    commaIdx = s.indexOf(',', startIdx);
+
+    // 5. b
+    b = s.substring(startIdx, commaIdx).toInt();
+    startIdx = commaIdx + 1;
+
+    // 6. time
+    time = s.substring(startIdx).toFloat();
+    // time = 0.05;
+
+    if (setIndex >= 0 && setIndex < NUMSETS)
+    {
+      power[setIndex] = pwr;
+      red[setIndex] = r;
+      green[setIndex] = g;
+      blue[setIndex] = b;
+      nodeProcessing[setIndex] = true;
+
+      if (time > 0)
+      {
+        nodeProcessing[setIndex] = true;
+        nodeEndTime[setIndex] =  millis() + (unsigned long)(time * 1000);
+      }
+      else
+      {
+        power[setIndex] = 0;
+        red[setIndex] = 0;
+        green[setIndex] = 0;
+        blue[setIndex] = 0;
+        nodeProcessing[setIndex] = false;
+        nodeEndTime[setIndex] = 0;
+      }
+
+      ledOnSingle(setIndex);
+    }
+
+    // if (setIndex >= 0 && setIndex < NUMSETS) {
+    //   power[setIndex] = pwr;
+    //   red[setIndex] = r;
+    //   green[setIndex] = g;
+    //   blue[setIndex] = b;
+
+    //   nodeProcessing[setIndex] = true;
+    //   nodeEndTime[setIndex] = millis() + (unsigned long)(time * 1000);
+    //   ledOnSingle(setIndex);
+    // }
+  }
 }
 
 void setAllRGB(String s)
 {
-  int pwr, r, g, b;
-  sscanf(s.c_str(), "%d,%d,%d,%d", &pwr, &r, &g, &b);
+  int pwr, r, g, b, time;
+  sscanf(s.c_str(), "%d,%d,%d,%d,%d", &pwr, &r, &g, &b, &time);
   for (int i = 0; i < NUMSETS; i++)
   {
     power[i] = pwr;
     red[i] = r;
     green[i] = g;
     blue[i] = b;
+    lightingDuration[i] = time;
   }
 
   ledOn(); // ここにledonを入れないと起動しない
@@ -494,7 +630,7 @@ void printRGB()
   Serial.println("--------------------------------------");
   for (int i = 0; i < NUMSETS; i++)
   {
-    Serial.printf("(Set %d, Power, R, G, B) = (%d, %d, %d, %d)\n", i + 1, power[i], red[i], green[i], blue[i]);
+    Serial.printf("(Set %d, Power, R, G, B, Duration) = (%d, %d, %d, %d, %d)\n", i + 1, power[i], red[i], green[i], blue[i], lightingDuration[i]);
   }
 }
 
@@ -523,6 +659,7 @@ void printRGB()
 ///////////////////////////////////////////////////////////////////////////
 // int EMG_PIN = 33;    // GPIO pin where MyoWare 2.0 sensor is connected
 // int THRESHOLD = 500; // Threshold value to detect muscle contraction
+
 
 // 追加関数
 ///////////////////////////////////////////////////////////////
@@ -929,7 +1066,7 @@ void printRGB()
 //   Serial.println("End IR Mode");
 //   setAllRGB("0,0,0,0,0");
 // }
-#endif // USE_OTHER_FUNCTIONS
+#endif //USE_OTHER_FUNCTIONS
 
 // サンプルアニメーション
 ///////////////////////////////////////////////////////////////
@@ -938,7 +1075,7 @@ void waveAnimation()
   M5.dis.fillpix(LED_COLOR_YELLOW);
 
   int waveLength = 11 / 2; // Define the length of the wave in terms of LED sets
-  int wavePower = 50;      // Maximum brightness for the wave peak
+  int wavePower = 50;           // Maximum brightness for the wave peak
   for (int cycle = 0; cycle < 3; cycle++)
   { // Number of wave cycles
     for (int step = 0; step < 11 + waveLength; step++)

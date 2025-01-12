@@ -4,6 +4,8 @@ from pythonosc import udp_client
 from pythonosc.osc_message_builder import OscMessageBuilder
 import sys
 import numpy as np
+from datetime import datetime
+import os
 
 SERVICE_UUID = "12345678-1234-5678-1234-56789abcdef0"
 CHARACTERISTIC_UUID = "abcdef12-3456-7890-abcd-ef1234567890"
@@ -16,7 +18,6 @@ UDP_PORT = 12345
 # Max8にメッセージを送り返すための設定
 UDP_IP_SEND = "127.0.0.1"
 UDP_PORT_SEND = 54321
-
 
 class MessageFormatter:
     def format_message(self, data):
@@ -96,7 +97,7 @@ class MessageFormatter:
                                 R, G, B = 0, 0, 0  # Default to black if unknown color
 
                             # Append formatted string
-                            node_data[node_number].append(f"{node_number},{intensity},{R},{G},{B},0.09")
+                            node_data[node_number].append(f"{node_number},{intensity},{R},{G},{B}")
 
         # Flatten node data in interleaved format
         converted_info = []
@@ -106,6 +107,7 @@ class MessageFormatter:
             for node_id in sorted(node_data.keys()):
                 if i < len(node_data[node_id]):
                     converted_info.append(node_data[node_id][i])
+            converted_info.append('delay')
 
         # Output the converted info
         # for entry in converted_info:
@@ -122,11 +124,13 @@ class MessageFormatter:
             print(f"Data saved to {filename}")
         except Exception as e:
             print(f"Error saving to file: {e}")
-
 class UDPServerProtocol(asyncio.DatagramProtocol):
-    def __init__(self, message_formatter,filename):
+    def __init__(self, message_formatter):
         self.message_formatter = message_formatter
-        self.filename = filename  # ファイル名をここで受け取る
+        directory = os.path.dirname(os.path.realpath(__file__))
+        # ファイル名を現在の日時に基づいて設定
+        current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.filename = f"VibrationPattern_{current_time}.txt"
         self.received_data = []
         self.reading_enabled = False
         self.chunks = []  # 分割されたデータチャンク
@@ -156,22 +160,12 @@ class UDPServerProtocol(asyncio.DatagramProtocol):
                 print("press 'send' to send to M5stack")
                 return
             
-            elif msg == 'send':
-                # print(self.received_data)
+            if msg == 'send':
                 formatted_messages = self.message_formatter.format_message(self.received_data)
-                # chunk_size = max(1, len(formatted_messages) // 5) 
                 self.message_formatter.save_to_file(formatted_messages, self.filename)
                 chunk_size = max(1, 100) 
-                print(f'number of lines:{len(formatted_messages)}')
-                print(f'chunk size:{chunk_size}')
-                # print(formatted_messages)
-                # print("-----------------formatte_messages-----------------")
-                # for message in formatted_messages:
-                #     print(message)
-                # print("-----------------end-----------------")
-                self.chunks = self.split_into_chunks(formatted_messages, chunk_size=chunk_size)  # チャンクサイズを指定      
-                self.send_chunk(self.current_chunk_index)  # 最初のチャンクを送信
-                # self.current_chunk_index += 1
+                self.chunks = self.split_into_chunks(formatted_messages, chunk_size=chunk_size)  
+                self.send_chunk(self.current_chunk_index)
                 send_osc_message("/endSend", "1")
                 return
             
@@ -193,22 +187,12 @@ class UDPServerProtocol(asyncio.DatagramProtocol):
         except Exception as e:
             print(f"Error processing UDP message: {e}")
     
-    # def split_into_chunks(self, messages, chunk_size):
-    #     """データをチャンクに分割するヘルパー関数"""
-    #     print("Splitted to chunks")
-    #     return [messages[i:i + chunk_size] for i in range(0, len(messages), chunk_size)]
-    
     def split_into_chunks(self, messages, chunk_size):
         # print("Splitted to chunks")
         chunks = [messages[i:i + chunk_size] for i in range(0, len(messages), chunk_size)]
         print(f'number of chunks: {len(chunks)}')
         # print(f"Chunks created: {chunks}")
         return chunks
-    
-    # def send_chunk(self, index):
-    #     """指定されたインデックスのチャンクを送信する"""
-    #     if index < len(self.chunks):
-    #         asyncio.create_task(write_to_ble(self.chunks[index]))
     
     def send_chunk(self, index):
         """指定されたインデックスのチャンクを送信する"""
@@ -224,16 +208,6 @@ class UDPServerProtocol(asyncio.DatagramProtocol):
             self.current_chunk_index += 1
         # 最後のチャンクが送信された後にメッセージを表示
         print("All messages processed. FINISH")
-    
-    # def parse_message(self, message):
-    #     parts = message.split(',')
-    #     for part in parts:
-    #         part = part.replace('\x00', '').strip()
-    #         if part.isdigit():
-    #             return int(part)
-    #         elif part in ('R', 'G', 'B', 'run', 'set','send','node', 'end', 'wave', 'random', 'shock'):  # 文字がR, G, Bの場合も許可
-    #             return part
-    #     return None
     
     def parse_message(self, message):
         parts = message.split(',')
@@ -263,7 +237,8 @@ class UDPServerProtocol(asyncio.DatagramProtocol):
 
 async def udp_server(message_formatter, filename):
     loop = asyncio.get_running_loop()
-    connect = loop.create_datagram_endpoint(lambda: UDPServerProtocol(message_formatter, filename), local_addr=(UDP_IP, UDP_PORT))
+    connect = loop.create_datagram_endpoint(lambda: UDPServerProtocol(message_formatter), local_addr=(UDP_IP, UDP_PORT))
+
     transport, protocol = await connect
     try:
         await asyncio.sleep(float('inf'))  # Keep the server running
@@ -279,7 +254,6 @@ async def scan_devices():
             if d.name is not None:
                 print(f"{i + 1}: address: {d.address}, name: {d.name}, uuid: {uuids}")
         return devices
-    
     except Exception as e:
         print("Error during scanning:", e)
         return []
@@ -302,21 +276,46 @@ async def select_device(devices):
 
 async def connect_and_send_data(selected_device):
     global client, characteristic
-    async with BleakClient(selected_device.address)  as client:
-        services = await client.get_services()
-        characteristic = None
-        for service in services:
-            for char in service.characteristics:
-                if char.uuid == CHARACTERISTIC_UUID:
-                    characteristic = char
+    try:
+        # 初回接続
+        async with BleakClient(selected_device.address) as client:
+            services = await client.get_services()
+            characteristic = None
+            for service in services:
+                for char in service.characteristics:
+                    if char.uuid == CHARACTERISTIC_UUID:
+                        characteristic = char
+                        break
+                if characteristic:
                     break
-            if characteristic:
-                break
-        if not characteristic:
-            raise Exception("Characteristic not found.")
-        print("BLE setup complete.")
-        
-        await asyncio.sleep(float('inf'))  # データ送信のために接続を維持
+            if not characteristic:
+                raise Exception("Characteristic not found.")
+            print("BLE setup complete.")
+
+            # 接続中は処理を続ける
+            while client.is_connected:
+                await asyncio.sleep(1)  # 1秒ごとに接続状態をチェック
+
+            # 切断された場合の処理
+            print("Connection lost, attempting to reconnect...")
+            await reconnect_and_send_data(selected_device)  # 再接続を試みる
+
+    except Exception as e:
+        print("Error connecting or sending data:", e)
+
+async def reconnect_and_send_data(selected_device):
+    """接続が切断された後、再接続を試みる"""
+    try:
+        print(f"Attempting to reconnect to {selected_device.name}...")
+        while True:
+            # 再接続を試みる
+            async with BleakClient(selected_device.address) as client:
+                print("Reconnected successfully.")
+                await connect_and_send_data(selected_device)  # 再接続後にデータを送信
+                break  # 接続が成功したらループを抜ける
+    except Exception as e:
+        print(f"Failed to reconnect: {e}")
+        await asyncio.sleep(2)  # 再接続失敗後は少し待ってから再試行
 
 async def write_to_ble(messages):
     global client, characteristic
@@ -360,23 +359,31 @@ def send_osc_message(address, message):
 async def main():
     global client, characteristic
     try:
-        # filename = input("保存するファイル名を入力してください (例: output.txt): ")
-        filename = r"H:\\マイドライブ\\研究\\tape-tics\\DEbasic\\Max\\output.txt"
+        # 現在のスクリプトが置かれているディレクトリを取得
+        directory = os.path.dirname(os.path.realpath(__file__))
+        
+        # 現在の日時を取得し、ファイル名に付け加える
+        current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = os.path.join(directory, f"VibrationPattern_{current_time}.txt")
         message_formatter = MessageFormatter()
-        devices = await scan_devices()
-        if not devices:
-            print("No devices found. Exiting.")
-            return
         
-        selected_device = await select_device(devices)
-        if not selected_device:
-            print("Device selection failed. Exiting.")
-            return
-        
-        asyncio.create_task(connect_and_send_data(selected_device))
+        while True:  # スキャンを繰り返し行うループ
+            devices = await scan_devices()
+            if not devices:
+                print("No devices found, retrying...")
+                await asyncio.sleep(2)  # 2秒待機してから再度スキャン
+                continue  # 次のスキャンを実行
+            selected_device = await select_device(devices)
+            if not selected_device:
+                print("Device selection failed, retrying...")
+                await asyncio.sleep(2)
+                continue  # 次のスキャンを実行
 
-        # Start UDP server
-        await udp_server(message_formatter,filename)
+            asyncio.create_task(connect_and_send_data(selected_device))
+
+            # Start UDP server
+            await udp_server(message_formatter, filename)
+            break  # デバイスが見つかり、接続されたらループを抜ける
         
     except Exception as e:
         print("Error in main function:", e)
