@@ -1,8 +1,9 @@
 #include <M5Atom.h>
 
-#define USE_BLE
+// #define USE_BLE
 // #define USE_OSC
 // #define USE_OTHER_FUNCTIONS
+#define DEVICE_TEST
 // #define USE_SERIAL_COMMAND
 
 int preset_time = 10000;
@@ -12,10 +13,13 @@ void ledOnSingle(int i);
 void ledOn();
 String getSerialCommand();
 
-void handleBLECommand(std::string value);
 void addMessageToQueue(String command);
 void processQueueTask(void *pvParameters);
+
+#ifdef USE_BLE
+void handleBLECommand(std::string value);
 void processBLETask(void *pvParameters);
+#endif // USE_BLE
 
 void setRGB(String s);
 void setAllRGB(String s);
@@ -78,6 +82,32 @@ CRGB getPixelColor2(uint8_t red, uint8_t green, uint8_t blue)
 {
   return CRGB(green, red, blue);
 }
+
+#ifdef DEVICE_TEST
+// デバイス単体試験用変数
+float accX, accY, accZ;
+
+// データ収集用
+const int sampleRate = 5;  // サンプリング周期 (ms)
+const int duration = 5000; // 測定時間 (ms)
+const int numSamples = duration / sampleRate;
+
+float accXData[numSamples];
+float accYData[numSamples];
+float accZData[numSamples];
+
+// RMS値を計算する関数
+float calculateRMS(float *data, int size)
+{
+  float sum = 0;
+  for (int i = 0; i < size; i++)
+  {
+    sum += data[i] * data[i];
+  }
+  return sqrt(sum / size);
+}
+
+#endif
 
 // BLE
 ///////////////////////////////////////////////////////////////////////
@@ -210,15 +240,15 @@ void setup()
 
 #ifdef USE_BLE
   initializeBLE();
-#endif
+  xTaskCreatePinnedToCore(processBLETask, "BLETask", 4096, NULL, 1, NULL, 1);
+#endif // USE_BLE
 
 #ifdef USE_OSC
   initializeOSC();
-#endif
+#endif // USE_OSC
 
   // キュー処理タスクを起動
   xTaskCreatePinnedToCore(processQueueTask, "QueueTask", 4096, NULL, 1, NULL, 0);
-  xTaskCreatePinnedToCore(processBLETask, "BLETask", 4096, NULL, 1, NULL, 1);
 
   Serial.println("Initialize complete");
 }
@@ -226,19 +256,6 @@ void setup()
 void loop()
 {
   M5.update();
-
-  // BLEからの文字列
-  // #ifdef USE_BLE
-  // if (deviceConnected)
-  // {
-  //   std::string value = pCharacteristic->getValue();
-  //   if (!value.empty())
-  //   {
-  //     handleBLECommand(value);
-  //     pCharacteristic->setValue("");
-  //   }
-  // }
-  // #endif
 
 #ifdef USE_SERIAL_COMMAND
   if (Serial.available() > 0)
@@ -257,23 +274,96 @@ void loop()
       else if (s == "wave" || s == "shock" || s == "random")
       {
         // Call setRGB when one of these commands is received
-        setRGB(s.c_str(), 0);
+        setRGB(s);
       }
       else
       {
-        String *message = new String(s);
-        if (!messageQueue.isFull())
-        {
-          // messageQueue.push(&message); // メッセージをキューに追加
-          // Serial.print("Queue count: ");
-          // Serial.println(messageQueue.getCount());
-        }
+        Serial.println(s);
+
+        int setIndex, pwr, r, g, b;
+        // メッセージをカンマで分割
+        int commaIndex = 0;
+        String parameters[5]; // 6つのパラメータを期待
+        // String remaining = *msg;
+        int startIdx = 0;
+        int commaIdx = s.indexOf(',');
+        setIndex = s.substring(startIdx, commaIdx).toInt() - 1;
+        startIdx = commaIdx + 1;
+        commaIdx = s.indexOf(',', startIdx);
+        // 2. pwr
+        power[setIndex] = s.substring(startIdx, commaIdx).toInt();
+        startIdx = commaIdx + 1;
+        commaIdx = s.indexOf(',', startIdx);
+        // 3. r
+        red[setIndex] = s.substring(startIdx, commaIdx).toInt();
+        startIdx = commaIdx + 1;
+        commaIdx = s.indexOf(',', startIdx);
+        // 4. g
+        green[setIndex] = s.substring(startIdx, commaIdx).toInt();
+        startIdx = commaIdx + 1;
+        commaIdx = s.indexOf(',', startIdx);
+        // 5. b
+        blue[setIndex] = s.substring(startIdx, commaIdx).toInt();
+        startIdx = commaIdx + 1;
+        ledOnSingle(setIndex);
       }
     }
   }
 #endif
+
+#ifdef DEVICE_TEST
+  delay(10000);
+  Serial.println("Start in 3 sec");
+  delay(3000);
+  
+  for (int l = 10; l < 256; l = l + 10)
+  {
+    String rgbCommand = String(l) + String(",0,0,0");
+    // String rgbCommand = String("50,0,0,0");
+    setAllRGB("255,0,0,0");
+    delay(3000);
+
+    float rmsAllValues[5]; // 5回分のRMS_Allを保存
+    float rmsAllSum = 0.0; // RMS_Allの合計値（平均計算用）
+
+    //  データ収集
+    for (int i = 0; i < 5; i++)
+    {
+      for (int j = 0; j < numSamples; j++)
+      {
+        M5.IMU.getAccelData(&accX, &accY, &accZ);
+
+        // データを保存
+        accXData[j] = accX;
+        accYData[j] = accY;
+        accZData[j] = accZ;
+
+        delay(sampleRate); // サンプリング間隔
+      }
+      // Serial.println("データ収集完了！RMS値を計算します...");
+      // RMS値の計算
+      float rmsX = calculateRMS(accXData, numSamples);
+      float rmsY = calculateRMS(accYData, numSamples);
+      float rmsZ = calculateRMS(accZData, numSamples);
+      float rmsAll = sqrt((rmsX * rmsX) + (rmsY * rmsY) + (rmsZ * rmsZ));
+
+      rmsAllValues[i] = rmsAll;
+      rmsAllSum += rmsAll;
+
+      delay(1000);
+    }
+    // 平均RMSを計算
+    float rmsAllAverage = rmsAllSum / 5.0;
+
+    // シリアルに結果を送信 (指定形式)
+    Serial.printf("%d, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f\n",
+                  255, rmsAllValues[0], rmsAllValues[1], rmsAllValues[2], rmsAllValues[3], rmsAllValues[4], rmsAllAverage);
+    setAllRGB("0,0,0,0,0");
+  }
+#endif
 }
 
+#ifdef USE_BLE
 void handleBLECommand(std::string value)
 {
   String command = String(value.c_str());
@@ -294,8 +384,46 @@ void handleBLECommand(std::string value)
   else
   {
     addMessageToQueue(command);
+
+#ifdef DEVICE_TEST
+    // Latency Measurement
+    String s = command;
+    int setIndex, pwr, r, g, b;
+    // メッセージをカンマで分割
+    int commaIndex = 0;
+    String parameters[5]; // 6つのパラメータを期待
+    // String remaining = *msg;
+    int startIdx = 0;
+    int commaIdx = s.indexOf(',');
+
+    setIndex = s.substring(startIdx, commaIdx).toInt() - 1;
+    startIdx = commaIdx + 1;
+    commaIdx = s.indexOf(',', startIdx);
+
+    // 2. pwr
+    power[setIndex] = s.substring(startIdx, commaIdx).toInt();
+    startIdx = commaIdx + 1;
+    commaIdx = s.indexOf(',', startIdx);
+
+    // 3. r
+    red[setIndex] = s.substring(startIdx, commaIdx).toInt();
+    startIdx = commaIdx + 1;
+    commaIdx = s.indexOf(',', startIdx);
+
+    // 4. g
+    green[setIndex] = s.substring(startIdx, commaIdx).toInt();
+    startIdx = commaIdx + 1;
+    commaIdx = s.indexOf(',', startIdx);
+
+    // 5. b
+    blue[setIndex] = s.substring(startIdx, commaIdx).toInt();
+    startIdx = commaIdx + 1;
+
+    ledOnSingle(setIndex);
+#endif // DEVICE_TEST
   }
 }
+#endif // USE_BLE
 
 void addMessageToQueue(String command)
 {
@@ -334,7 +462,6 @@ void processQueueTask(void *pvParameters)
         Serial.print(messageQueue.getCount());
         Serial.print(": pop from queue :");
         Serial.println(*msg);
-
         String s = *msg;
         if (s == "delay")
         {
@@ -350,30 +477,24 @@ void processQueueTask(void *pvParameters)
           // String remaining = *msg;
           int startIdx = 0;
           int commaIdx = s.indexOf(',');
-
           setIndex = s.substring(startIdx, commaIdx).toInt() - 1;
           startIdx = commaIdx + 1;
           commaIdx = s.indexOf(',', startIdx);
-
           // 2. pwr
           power[setIndex] = s.substring(startIdx, commaIdx).toInt();
           startIdx = commaIdx + 1;
           commaIdx = s.indexOf(',', startIdx);
-
           // 3. r
           red[setIndex] = s.substring(startIdx, commaIdx).toInt();
           startIdx = commaIdx + 1;
           commaIdx = s.indexOf(',', startIdx);
-
           // 4. g
           green[setIndex] = s.substring(startIdx, commaIdx).toInt();
           startIdx = commaIdx + 1;
           commaIdx = s.indexOf(',', startIdx);
-
           // 5. b
           blue[setIndex] = s.substring(startIdx, commaIdx).toInt();
           startIdx = commaIdx + 1;
-
           ledOnSingle(setIndex);
           delete msg;
         }
@@ -390,10 +511,11 @@ void processQueueTask(void *pvParameters)
       Serial.println("All messages processed. FINISH");
       startExecution = false;
     }
-    vTaskDelay(5 / portTICK_PERIOD_MS); // 少し待機してループを繰り返す
+    vTaskDelay(2 / portTICK_PERIOD_MS); // 少し待機してループを繰り返す
   }
 }
 
+#ifdef USE_BLE
 void processBLETask(void *pvParameters)
 {
   while (true)
@@ -405,12 +527,16 @@ void processBLETask(void *pvParameters)
       if (!value.empty())
       {
         handleBLECommand(value);
+        // BandWidth Measurement
+        //  unsigned long currentMillis = millis(); // 受信時刻を取得
+        //  Serial.printf("Received command at: %lu ms\n", currentMillis);
         pCharacteristic->setValue("");
       }
     }
-    vTaskDelay(5 / portTICK_PERIOD_MS); // 少し待機してループを繰り返す
+    vTaskDelay(1 / portTICK_PERIOD_MS); // 少し待機してループを繰り返す
   }
 }
+#endif // USE_BLE
 
 void ledOnSingle(int i)
 {
@@ -449,7 +575,7 @@ String getSerialCommand()
   s.trim();
   return s;
 }
-#endif
+#endif // USE_SERIAL_COMMAND
 
 void setRGB(String s)
 {
