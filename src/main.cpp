@@ -1,10 +1,15 @@
 #include <M5Atom.h>
 
 // #define USE_BLE
-// #define USE_OSC
-// #define USE_OTHER_FUNCTIONS
-#define DEVICE_TEST
+#define USE_OSC
+
+// #define DEVICE_TEST
+// #ifdef DEVICE_TEST_2
+
+// #deifne USE_OTHER_FUNCTIONS
 // #define USE_SERIAL_COMMAND
+// #define SOUND_MODE
+// #define IR_MODE
 
 int preset_time = 10000;
 int steps = 0;
@@ -25,12 +30,18 @@ void setRGB(String s);
 void setAllRGB(String s);
 void printRGB();
 
+#ifdef IR_MODE
+#include <IRremote.h>
+int receiverPin = 32;
+void IRsensor();
+void handleIRCommand(unsigned long command);
+#endif
+
 // 追加関数
 #ifdef USE_OTHER_FUNCTIONS
 void initializeHBM();
 void SoundMode();
 void shake();
-void IRsensor();
 void MuscleMode();
 void HeartBeatMode();
 void onBeatDetected();
@@ -54,7 +65,7 @@ cppQueue messageQueue(sizeof(String), 1000, FIFO, false); // FIFOキューの初
 
 #define PIN 22
 #define NUMMAX 60
-#define NUMSETS 11
+#define NUMSETS 12
 #define NUMPIXELS (NUMMAX * 2)
 #define LED_TYPE WS2812
 #define COLOR_ORDER RGB
@@ -95,7 +106,6 @@ const int numSamples = duration / sampleRate;
 float accXData[numSamples];
 float accYData[numSamples];
 float accZData[numSamples];
-
 // RMS値を計算する関数
 float calculateRMS(float *data, int size)
 {
@@ -193,38 +203,66 @@ void initializeBLE()
 
 const char *ssid = "Buffalo-G-6368";      // WiFi SSIDを設定
 const char *password = "5sxhmntn7nr7y";   // WiFi パスワードを設定
-const IPAddress ip(192, 168, 11, 43);     // デバイスの固定IPアドレス
-const IPAddress gateway(192, 168, 11, 1); // ゲートウェイのIPアドレス
+const IPAddress ip(192, 168, 11, 43);     // デバイスの固定IPアドレス(M5stackのIP)
+const IPAddress gateway(192, 168, 11, 1); // ゲートウェイのIPアドレス(ルーターのIP)
 const IPAddress subnet(255, 255, 255, 0); // サブネットマスク
 
-const char *host = "192.168.11.3"; // 送信先のホストIPアドレス
-const int recv_port = 8001;        // 受信ポート番号
-const int send_port = 9001;        // 送信ポート番号
+// const char *host = "192.168.11.3"; // 送信先のホストIPアドレス(QuestのIP)
+const int recv_port = 8001; // 受信ポート番号(M5Stackが受信するポート番号)
+// const int send_port = 9001;        // 送信ポート番号
 
-void sendDataOverOSC(const char *address, const char *data)
+void initializeWifi()
 {
-  OSCMessage msg(address);
-  msg.add(data);
-  udp.beginPacket(outIp, send_port);
-  msg.send(udp);
-  udp.endPacket();
-  msg.empty();
+  WiFi.disconnect(true, true); // WiFiを無効にしてAP情報を消去
+  delay(200);
+  WiFi.begin(ssid, password); // WiFiに接続
+  delay(200);
+  WiFi.config(ip, gateway, subnet); // 固定IPを設定
+  delay(200);
+
+  // WiFi接続待ち
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    delay(500);
+  }
+  Serial.println("WiFi connected"); // WiFi接続成功メッセージ
+  Serial.print("WiFi connected, IP = ");
+  Serial.println(WiFi.localIP());
+  // M5.dis.fillpix(LED_COLOR_YELLOW);
 }
 
 void initializeOSC()
 {
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    delay(1000);
-    Serial.println("Connecting to WiFi...");
-  }
-  Serial.println("Connected to WiFi");
-  Serial.print("WiFi connected, IP = ");
-  Serial.println(WiFi.localIP());
+  // /fingerアドレスに対してサブスクライブ（OSCメッセージ受信の設定）
+  OscWiFi.subscribe(recv_port, "/finger", [](const OscMessage &msg){
+  String s = msg.getArgAsString(0);
 
-  udp.begin(inPort);
-  Serial.println("OSC initialized and listening");
+  Serial.println(s);
+
+  int setIndex, pwr, r, g, b;
+  int commaIndex = 0;
+  int startIdx = 0;
+  int commaIdx = s.indexOf(',');
+
+  setIndex = s.substring(startIdx, commaIdx).toInt() - 1;
+  startIdx = commaIdx + 1;
+  commaIdx = s.indexOf(',', startIdx);
+  // 2. pwr
+  power[setIndex] = s.substring(startIdx, commaIdx).toInt();
+  startIdx = commaIdx + 1;
+  commaIdx = s.indexOf(',', startIdx);
+  // 3. r
+  red[setIndex] = s.substring(startIdx, commaIdx).toInt();
+  startIdx = commaIdx + 1;
+  commaIdx = s.indexOf(',', startIdx);
+  // 4. g
+  green[setIndex] = s.substring(startIdx, commaIdx).toInt();
+  startIdx = commaIdx + 1;
+  commaIdx = s.indexOf(',', startIdx);
+  // 5. b
+  blue[setIndex] = s.substring(startIdx, commaIdx).toInt();
+  startIdx = commaIdx + 1;
+  ledOnSingle(setIndex); });
 }
 #endif // USE_OSC
 
@@ -244,18 +282,83 @@ void setup()
 #endif // USE_BLE
 
 #ifdef USE_OSC
+  initializeWifi();
   initializeOSC();
 #endif // USE_OSC
 
+#ifdef IR_MODE
+  IrReceiver.begin(receiverPin, true);
+#endif
+
+#ifdef DEVICE_TEST_2
+  delay(10000);
+  Serial.println("Start in 3 sec");
+  delay(3000);
+
+  for (int l = 50; l < 256; l = l + 10)
+  {
+    String rgbCommand = String(l) + String(",0,0,0");
+    // String rgbCommand = String("255,0,0,0");
+    setAllRGB(rgbCommand);
+    delay(3000);
+
+    float rmsAllValues[5]; // 5回分のRMS_Allを保存
+    float rmsAllSum = 0.0; // RMS_Allの合計値（平均計算用）
+
+    //  データ収集
+    for (int i = 0; i < 5; i++)
+    {
+      memset(accXData, 0, sizeof(accXData));
+      memset(accYData, 0, sizeof(accYData));
+      memset(accZData, 0, sizeof(accZData));
+
+      for (int j = 0; j < numSamples; j++)
+      {
+        M5.IMU.getAccelData(&accX, &accY, &accZ);
+
+        // データを保存
+        accXData[j] = accX;
+        accYData[j] = accY;
+        accZData[j] = accZ;
+        delay(sampleRate); // サンプリング間隔
+      }
+
+      // RMS値の計算
+      // Serial.println("データ収集完了！RMS値を計算します...");
+      float rmsX = calculateRMS(accXData, numSamples);
+      float rmsY = calculateRMS(accYData, numSamples);
+      float rmsZ = calculateRMS(accZData, numSamples);
+      float rmsAll = sqrt((rmsX * rmsX) + (rmsY * rmsY) + (rmsZ * rmsZ));
+
+      rmsAllValues[i] = rmsAll;
+      rmsAllSum += rmsAll;
+
+      delay(1000);
+    }
+    // 平均RMSを計算
+    float rmsAllAverage = rmsAllSum / 5.0;
+    float ms = rmsAllAverage * 9.81;
+
+    // シリアルに結果を送信 (指定形式)
+    Serial.printf("%d, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f\n",
+                  l, rmsAllValues[0], rmsAllValues[1], rmsAllValues[2], rmsAllValues[3], rmsAllValues[4], rmsAllAverage, ms);
+    setAllRGB("0,0,0,0");
+    delay(2000); // 次のPWM値に進む前に少し待つ
+  }
+#endif
+
   // キュー処理タスクを起動
   xTaskCreatePinnedToCore(processQueueTask, "QueueTask", 4096, NULL, 1, NULL, 0);
-
   Serial.println("Initialize complete");
 }
 
 void loop()
 {
   M5.update();
+
+#ifdef USE_OSC
+  OscWiFi.update();
+#endif
 
 #ifdef USE_SERIAL_COMMAND
   if (Serial.available() > 0)
@@ -271,9 +374,8 @@ void loop()
           // Serial.println("Starting execution of queued messages.");
         }
       }
-      else if (s == "wave" || s == "shock" || s == "random")
+      else if (s == "wave" || s == "shock" || s == "random" || s == "ir")
       {
-        // Call setRGB when one of these commands is received
         setRGB(s);
       }
       else
@@ -306,60 +408,73 @@ void loop()
         blue[setIndex] = s.substring(startIdx, commaIdx).toInt();
         startIdx = commaIdx + 1;
         ledOnSingle(setIndex);
+
+#ifdef DEVICE_TEST
+        Serial.println("start");
+        ledOnSingle(setIndex);
+        delay(3000);
+
+        float rmsAllValues[5]; // 5回分のRMS_Allを保存
+        float rmsAllSum = 0.0; // RMS_Allの合計値（平均計算用）
+
+        //  データ収集
+        for (int i = 0; i < 5; i++)
+        {
+          memset(accXData, 0, sizeof(accXData));
+          memset(accYData, 0, sizeof(accYData));
+          memset(accZData, 0, sizeof(accZData));
+
+          for (int j = 0; j < numSamples; j++)
+          {
+            M5.IMU.getAccelData(&accX, &accY, &accZ);
+
+            // データを保存
+            accXData[j] = accX;
+            accYData[j] = accY;
+            accZData[j] = accZ;
+            delay(sampleRate); // サンプリング間隔
+          }
+
+          // RMS値の計算
+          Serial.println("データ収集完了！RMS値を計算します...");
+          float rmsX = calculateRMS(accXData, numSamples);
+          float rmsY = calculateRMS(accYData, numSamples);
+          float rmsZ = calculateRMS(accZData, numSamples);
+          float rmsAll = sqrt((rmsX * rmsX) + (rmsY * rmsY) + (rmsZ * rmsZ));
+
+          rmsAllValues[i] = rmsAll;
+          rmsAllSum += rmsAll;
+
+          delay(1000);
+        }
+        // 平均RMSを計算
+        float rmsAllAverage = rmsAllSum / 5.0;
+        float ms = rmsAllAverage * 9.81;
+
+        // シリアルに結果を送信 (指定形式)
+        Serial.printf("%.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f\n",
+                      rmsAllValues[0], rmsAllValues[1], rmsAllValues[2], rmsAllValues[3], rmsAllValues[4], rmsAllAverage, ms);
+        setAllRGB("0,0,0,0");
+        delay(2000); // 次のPWM値に進む前に少し待つ
+#endif
       }
     }
   }
 #endif
 
-#ifdef DEVICE_TEST
-  delay(10000);
-  Serial.println("Start in 3 sec");
-  delay(3000);
-  
-  for (int l = 10; l < 256; l = l + 10)
+#ifdef IR_MODE
+  if (IrReceiver.decode())
   {
-    String rgbCommand = String(l) + String(",0,0,0");
-    // String rgbCommand = String("50,0,0,0");
-    setAllRGB("255,0,0,0");
-    delay(3000);
-
-    float rmsAllValues[5]; // 5回分のRMS_Allを保存
-    float rmsAllSum = 0.0; // RMS_Allの合計値（平均計算用）
-
-    //  データ収集
-    for (int i = 0; i < 5; i++)
+    IrReceiver.printIRResultShort(&Serial);
+    if (IrReceiver.decodedIRData.decodedRawData == 0xBA45FF00)
     {
-      for (int j = 0; j < numSamples; j++)
-      {
-        M5.IMU.getAccelData(&accX, &accY, &accZ);
-
-        // データを保存
-        accXData[j] = accX;
-        accYData[j] = accY;
-        accZData[j] = accZ;
-
-        delay(sampleRate); // サンプリング間隔
-      }
-      // Serial.println("データ収集完了！RMS値を計算します...");
-      // RMS値の計算
-      float rmsX = calculateRMS(accXData, numSamples);
-      float rmsY = calculateRMS(accYData, numSamples);
-      float rmsZ = calculateRMS(accZData, numSamples);
-      float rmsAll = sqrt((rmsX * rmsX) + (rmsY * rmsY) + (rmsZ * rmsZ));
-
-      rmsAllValues[i] = rmsAll;
-      rmsAllSum += rmsAll;
-
-      delay(1000);
+      Serial.println("IR Mode");
+      IrReceiver.resume();
+      IRsensor();
     }
-    // 平均RMSを計算
-    float rmsAllAverage = rmsAllSum / 5.0;
-
-    // シリアルに結果を送信 (指定形式)
-    Serial.printf("%d, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f\n",
-                  255, rmsAllValues[0], rmsAllValues[1], rmsAllValues[2], rmsAllValues[3], rmsAllValues[4], rmsAllAverage);
-    setAllRGB("0,0,0,0,0");
+    IrReceiver.resume();
   }
+
 #endif
 }
 
@@ -598,6 +713,13 @@ void setRGB(String s)
     Serial.println("Random Mode");
     randomAnimation();
   }
+#ifdef IR_MODE
+  else if (s.startsWith("ir"))
+  {
+    Serial.println("IR Mode");
+    IRsensor();
+  }
+#endif
 }
 
 void setAllRGB(String s)
@@ -623,6 +745,111 @@ void printRGB()
     Serial.printf("(Set %d, Power, R, G, B) = (%d, %d, %d, %d)\n", i + 1, power[i], red[i], green[i], blue[i]);
   }
 }
+
+#ifdef SOUND_MODE
+void SoundMode()
+{
+  M5.dis.fillpix(LED_COLOR_YELLOW);
+  int max_value = 50; // Maximum value for red, green, blue, power
+  int value = 255;
+  int nodeval = value / NUMSETS;
+  int scaled_nodeval = max_value / NUMSETS; // Scaled nodeval
+
+  while (true)
+  {
+    if (deviceConnected)
+    {
+      std::string command = pCharacteristic->getValue();
+      if (command == "end")
+      {
+        break;
+      }
+      else if (command.length() >= 2)
+      {
+        int amplitude = std::stoi(command); // 修正箇所
+        if (amplitude >= 0 && amplitude <= value)
+        {
+          int scaled_amplitude = (amplitude * max_value) / value; // Scale amplitude to 0-50 range
+          int red = 0, green = 0, blue = 0;
+
+          if (amplitude <= 150)
+          {
+            green = scaled_amplitude; // Set green to max value 50
+          }
+          else if (amplitude <= 200)
+          {
+            red = scaled_amplitude;
+            green = scaled_amplitude; // Set yellow to max value 50
+          }
+          else
+          {
+            red = scaled_amplitude; // Set red to max value 50
+          }
+
+          String colorCommand = String(scaled_amplitude) + "," + String(red) + "," + String(green) + "," + String(blue) + "," + String(0);
+          setAllRGB(colorCommand);
+        }
+      }
+      // ledOn();
+    }
+  }
+  Serial.println("End SoundMode");
+  setAllRGB("0,0,0,0,0");
+  M5.dis.fillpix(LED_COLOR_GREEN);
+}
+#endif
+
+#ifdef IR_MODE
+void IRsensor()
+{
+  M5.dis.fillpix(LED_COLOR_YELLOW);
+  bool flag = true;
+  while (flag)
+  {
+    if (IrReceiver.decode())
+    {
+      IrReceiver.printIRResultShort(&Serial);
+      if (IrReceiver.decodedIRData.decodedRawData == 0xBA45FF00)
+      {
+        flag = false;
+      }
+      else
+      {
+        handleIRCommand(IrReceiver.decodedIRData.decodedRawData);
+      }
+    }
+  }
+  IrReceiver.resume();
+  Serial.println("End IR mode");
+  M5.dis.fillpix(LED_COLOR_OFF);
+}
+
+void handleIRCommand(unsigned long command)
+{
+  IrReceiver.resume();
+  switch (command)
+  {
+  case 0xF30CFF00: // ボタン1
+    setAllRGB("50,50,0,0");
+    Serial.println("button 1");
+    break;
+  case 0xE718FF00: // ボタン2
+    setAllRGB("50,0,50,0");
+    Serial.println("button 2");
+    break;
+  case 0xA15EFF00: // ボタン3
+    setAllRGB("50,0,0,50");
+    Serial.println("button 3");
+    break;
+  default:
+    Serial.print("Unknown command: 0x");
+    Serial.println(command, HEX);
+    break;
+  }
+  delay(1000);
+  setAllRGB("0,0,0,0");
+}
+#endif // IR_MODE
 
 #ifdef USE_OTHER_FUNCTIONS
 // 心拍
@@ -823,57 +1050,6 @@ void printRGB()
 //   setAllRGB("0,0,0,0,0");
 // }
 
-// void SoundMode()
-// {
-//   M5.dis.fillpix(LED_COLOR_YELLOW);
-//   int max_value = 50; // Maximum value for red, green, blue, power
-//   int value = 255;
-//   int nodeval = value / NUMSETS;
-//   int scaled_nodeval = max_value / NUMSETS; // Scaled nodeval
-
-//   while (true)
-//   {
-//     if (deviceConnected)
-//     {
-//       std::string command = pCharacteristic->getValue();
-//       if (command == "end")
-//       {
-//         break;
-//       }
-//       else if (command.length() >= 2)
-//       {
-//         int amplitude = std::stoi(command); // 修正箇所
-//         if (amplitude >= 0 && amplitude <= value)
-//         {
-//           int scaled_amplitude = (amplitude * max_value) / value; // Scale amplitude to 0-50 range
-//           int red = 0, green = 0, blue = 0;
-
-//           if (amplitude <= 150)
-//           {
-//             green = scaled_amplitude; // Set green to max value 50
-//           }
-//           else if (amplitude <= 200)
-//           {
-//             red = scaled_amplitude;
-//             green = scaled_amplitude; // Set yellow to max value 50
-//           }
-//           else
-//           {
-//             red = scaled_amplitude; // Set red to max value 50
-//           }
-
-//           String colorCommand = String(scaled_amplitude) + "," + String(red) + "," + String(green) + "," + String(blue) + "," + String(0);
-//           setAllRGB(colorCommand);
-//         }
-//       }
-//       // ledOn();
-//     }
-//   }
-//   Serial.println("End SoundMode");
-//   setAllRGB("0,0,0,0,0");
-//   M5.dis.fillpix(LED_COLOR_GREEN);
-// }
-
 // void MuscleMode()
 // {
 //   pinMode(EMG_PIN, INPUT);
@@ -970,90 +1146,6 @@ void printRGB()
 //   Serial.println("End shake Mode");
 //   setAllRGB("0,0,0,0,0");
 //   M5.dis.fillpix(LED_COLOR_RED);
-// }
-
-// void IRsensor()
-// {
-// #ifdef ARDUINO_ESP32C3_DEV
-//   uint16_t kRecvPin = 32;
-// #else
-//   uint16_t kRecvPin = 32;
-// #endif
-
-//   uint32_t kBaudRate = 115200;
-//   uint16_t kCaptureBufferSize = 1024;
-
-// #if DECODE_AC
-//   uint8_t kTimeout = 50;
-// #else
-//   uint8_t kTimeout = 15;
-// #endif
-
-//   uint16_t kMinUnknownSize = 12;
-//   uint8_t kTolerancePercentage = kTolerance;
-
-//   IRrecv irrecv(kRecvPin, kCaptureBufferSize, kTimeout, true);
-//   decode_results results;
-
-//   while (!Serial)
-//     delay(50);
-//   assert(irutils::lowLevelSanityCheck() == 0);
-
-//   Serial.printf("\n" D_STR_IRRECVDUMP_STARTUP "\n", kRecvPin);
-// #if DECODE_HASH
-//   irrecv.setUnknownThreshold(kMinUnknownSize);
-// #endif
-//   irrecv.setTolerance(kTolerancePercentage);
-//   irrecv.enableIRIn();
-
-//   while (true)
-//   {
-//     // if (deviceConnected)
-//     // {
-//     //   std::string command = pCharacteristic->getValue();
-//     if (Serial.available() > 0)
-//     {
-//       String command = getSerialCommand();
-//       if (command == "end")
-//       {
-//         break;
-//       }
-//     }
-
-//     if (irrecv.decode(&results))
-//     {
-//       uint32_t now = millis();
-//       Serial.printf(D_STR_TIMESTAMP " : %06u.%03u\n", now / 1000, now % 1000);
-//       if (results.overflow)
-//         Serial.printf(D_WARN_BUFFERFULL "\n", kCaptureBufferSize);
-//       Serial.println(D_STR_LIBRARY "   : v" _IRREMOTEESP8266_VERSION_STR "\n");
-//       if (kTolerancePercentage != kTolerance)
-//         Serial.printf(D_STR_TOLERANCE " : %d%%\n", kTolerancePercentage);
-//       Serial.print(resultToHumanReadableBasic(&results));
-//       String description = IRAcUtils::resultAcToString(&results);
-//       if (description.length())
-//         Serial.println(D_STR_MESGDESC ": " + description);
-//       yield();
-
-// #if LEGACY_TIMING_INFO
-//       Serial.println(resultToTimingInfo(&results));
-//       yield();
-// #endif
-//       Serial.println(resultToSourceCode(&results));
-//       Serial.println();
-//       yield();
-
-//       if (results.value == 0xFF6897)
-//       { // Replace with your specific IR code
-//         // M5.dis.fillpix(LED_COLOR_YELLOW);
-//         // delay(1000);
-//         // M5.dis.fillpix(LED_COLOR_OFF);
-//         waveAnimation();
-//       }
-//     }
-//   }
-//   Serial.println("End IR Mode");
-//   setAllRGB("0,0,0,0,0");
 // }
 #endif // USE_OTHER_FUNCTIONS
 
