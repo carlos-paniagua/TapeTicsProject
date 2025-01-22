@@ -1,15 +1,17 @@
 #include <M5Atom.h>
 
 // #define USE_BLE
-#define USE_OSC
+// #define USE_OSC
 
 // #define DEVICE_TEST
 // #ifdef DEVICE_TEST_2
 
 // #deifne USE_OTHER_FUNCTIONS
-// #define USE_SERIAL_COMMAND
+#define USE_SERIAL_COMMAND
 // #define SOUND_MODE
 // #define IR_MODE
+// #define MUSCLE_MODE
+#define HEART_MODE
 
 int preset_time = 10000;
 int steps = 0;
@@ -35,6 +37,23 @@ void printRGB();
 int receiverPin = 32;
 void IRsensor();
 void handleIRCommand(unsigned long command);
+#endif
+
+#ifdef MUSCLE_MODE
+int EMG_PIN = 33;    // GPIO pin where MyoWare 2.0 sensor is connected
+// int THRESHOLD = 500; // Threshold value to detect muscle contraction
+void MuscleMode();
+#endif
+
+#ifdef HEART_MODE
+#include "MAX30100.h"
+#define SAMPLING_RATE   (MAX30100_SAMPRATE_100HZ)
+#define IR_LED_CURRENT  (MAX30100_LED_CURR_24MA)
+#define RED_LED_CURRENT (MAX30100_LED_CURR_27_1MA)
+#define PULSE_WIDTH     (MAX30100_SPC_PW_1600US_16BITS)
+#define HIGHRES_MODE    (false)
+MAX30100 sensor; 
+void HeartMode();
 #endif
 
 // 追加関数
@@ -273,6 +292,10 @@ void setup()
   M5.begin(true, false, true); // 本体初期化（UART, I2C, LED）
   M5.IMU.Init();               // IMUを使うとき解除
 
+#ifdef HEART_MODE
+  sensor.begin();
+#endif
+
   FastLED.addLeds<LED_TYPE, PIN, COLOR_ORDER>(leds, NUMMAX).setCorrection(TypicalLEDStrip);
   FastLED.setDither(DISABLE_DITHER);
 
@@ -374,7 +397,7 @@ void loop()
           // Serial.println("Starting execution of queued messages.");
         }
       }
-      else if (s == "wave" || s == "shock" || s == "random" || s == "ir")
+      else if (s == "wave" || s == "shock" || s == "random" || s == "ir" || s == "muscle" || s == "heart")
       {
         setRGB(s);
       }
@@ -720,6 +743,22 @@ void setRGB(String s)
     IRsensor();
   }
 #endif
+
+#ifdef MUSCLE_MODE
+  else if (s.startsWith("muscle"))
+  {
+    Serial.println("Muscle mode");
+    MuscleMode();
+  }
+#endif
+
+#ifdef HEART_MODE
+  else if (s.startsWith("heart"))
+  {
+    Serial.println("Heart mode");
+    HeartMode();
+  }
+#endif
 }
 
 void setAllRGB(String s)
@@ -851,6 +890,91 @@ void handleIRCommand(unsigned long command)
 }
 #endif // IR_MODE
 
+#ifdef MUSCLE_MODE
+void MuscleMode()
+{
+  M5.dis.fillpix(LED_COLOR_YELLOW);
+
+  pinMode(EMG_PIN, INPUT);
+  // const int VOLT = 5;        // 3.3Vを電源とした場合
+  // const int ANALOG_MAX = 4095; // ESP32の場合
+  while (true)
+  {
+    if (Serial.available() > 0)
+    {
+      String command = getSerialCommand();
+      if (command == "end")
+      {
+        break;
+      }
+    }
+
+    int emgValue = analogRead(EMG_PIN);
+    // float voltage = ((long)emgValue * VOLT * 1000) / ANALOG_MAX;
+    int outputValue = map(emgValue, 0, 4095, 0, 255);
+    // Serial.print("EMG Value: ");
+    // Serial.println(voltage);
+    // Serial.println(emgValue);
+    Serial.printf(">emgValue:%d\n", outputValue);
+
+    // if (emgValue > THRESHOLD)
+    // {
+    //   Serial.println("Muscle contraction detected.");
+    //   M5.dis.fillpix(LED_COLOR_YELLOW);
+    //   delay(1000);
+    //   M5.dis.fillpix(LED_COLOR_OFF);
+    // }
+    // else
+    // {
+    //   Serial.println("No muscle contraction.");
+    // }
+
+    delay(50);
+  }
+  Serial.println("End MuscleMode");
+  M5.dis.fillpix(LED_COLOR_OFF);
+  // setAllRGB("0,0,0,0,0");
+}
+#endif //MUSCLE_MODE
+
+#ifdef HEART_MODE
+void HeartMode()
+{
+  M5.dis.fillpix(LED_COLOR_YELLOW);
+  // Set up the wanted parameters.  设置所需的参数
+  sensor.setMode(MAX30100_MODE_SPO2_HR);
+  sensor.setLedsCurrent(IR_LED_CURRENT, RED_LED_CURRENT);
+  sensor.setLedsPulseWidth(PULSE_WIDTH);
+  sensor.setSamplingRate(SAMPLING_RATE);
+  sensor.setHighresModeEnabled(HIGHRES_MODE);
+
+  uint16_t ir, red;
+
+  while (true)
+  {
+    if (Serial.available() > 0)
+    {
+      String command = getSerialCommand();
+      if (command == "end")
+      {
+        break;
+      }
+    }
+    sensor.update(); 
+    while (sensor.getRawValues(&ir, &red)) {  // データを取得した場合
+        Serial.print("IR: ");
+        Serial.print(ir);                      // IR値をシリアルモニタに出力
+        Serial.print("   ");
+        Serial.print("RED: ");
+        Serial.println(red);                   // RED値をシリアルモニタに出力
+        Serial.printf(">ir:%d\n", ir);
+    }
+  }
+  Serial.println("End HeartBeat Mode");
+  setAllRGB("all,0,0,0,0,0");
+}
+#endif
+
 #ifdef USE_OTHER_FUNCTIONS
 // 心拍
 ///////////////////////////////////////////////////////////////////////////
@@ -872,10 +996,6 @@ void handleIRCommand(unsigned long command)
 //   pox.setOnBeatDetectedCallback(onBeatDetected);
 // }
 
-// 筋電位
-///////////////////////////////////////////////////////////////////////////
-// int EMG_PIN = 33;    // GPIO pin where MyoWare 2.0 sensor is connected
-// int THRESHOLD = 500; // Threshold value to detect muscle contraction
 
 // 追加関数
 ///////////////////////////////////////////////////////////////
@@ -925,42 +1045,6 @@ void handleIRCommand(unsigned long command)
 //   setAllRGB("all,0,0,0,0,0");
 // }
 
-// void HeartBeatMode()
-// {
-//   initializeHBM()
-//   M5.dis.fillpix(LED_COLOR_YELLOW);
-//   // uint8_t Heart_rate = 0;
-//   // uint8_t Spo2 = 0;
-//   uint32_t tsLastReport = 0;
-//   String command = "";
-//   while (command != "end")
-//   {
-//     if (Serial.available() > 0)
-//     {
-//       command = getSerialCommand();
-//     }
-//     pox.update();
-//     if (millis() - tsLastReport > REPORTING_PERIOD_MS)
-//     {
-//       Serial.print("Heart rate:");
-//       Serial.print(pox.getHeartRate());
-//       Serial.print(" bpm / SpO2:");
-//       Serial.print(pox.getSpO2());
-//       Serial.println(" %");
-//       if (heartRate > 0) // 心拍が検出された場合のみLEDを点灯
-//       {
-//         setAllRGB("50,255,0,0,1"); // 点灯時間を1秒に設定
-//       }
-//       else
-//       {
-//         setAllRGB("0,0,0,0,0"); // 心拍が検出されない場合は消灯
-//       }
-//       tsLastReport = millis();
-//     }
-//   }
-//   Serial.println("End HeartBeat Mode");
-//   setAllRGB("all,0,0,0,0,0");
-// }
 
 // void onBeatDetected()
 // {
@@ -1050,48 +1134,7 @@ void handleIRCommand(unsigned long command)
 //   setAllRGB("0,0,0,0,0");
 // }
 
-// void MuscleMode()
-// {
-//   pinMode(EMG_PIN, INPUT);
-//   const int VOLT = 3.3;        // 3.3Vを電源とした場合
-//   const int ANALOG_MAX = 4096; // ESP32の場合
-//   while (true)
-//   {
-//     // if (deviceConnected)
-//     // {
-//     //   std::string command = pCharacteristic->getValue();
-//     if (Serial.available() > 0)
-//     {
-//       String command = getSerialCommand();
-//       if (command == "end")
-//       {
-//         break;
-//       }
-//     }
 
-//     int emgValue = analogRead(EMG_PIN);
-//     float voltage = ((long)emgValue * VOLT * 1000) / ANALOG_MAX;
-//     // Serial.print("EMG Value: ");
-//     Serial.println(voltage);
-
-//     // if (emgValue > THRESHOLD)
-//     // {
-//     //   Serial.println("Muscle contraction detected.");
-//     //   M5.dis.fillpix(LED_COLOR_YELLOW);
-//     //   delay(1000);
-//     //   M5.dis.fillpix(LED_COLOR_OFF);
-//     // }
-//     // else
-//     // {
-//     //   Serial.println("No muscle contraction.");
-//     // }
-
-//     // delay(100);
-//   }
-//   Serial.println("End MuscleMode");
-//   setAllRGB("0,0,0,0,0");
-//   M5.dis.fillpix(LED_COLOR_GREEN);
-// }
 
 // void shake()
 // {
