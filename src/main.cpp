@@ -7,11 +7,11 @@
 // #ifdef DEVICE_TEST_2
 
 // #deifne USE_OTHER_FUNCTIONS
-#define USE_SERIAL_COMMAND
+// #define USE_SERIAL_COMMAND
 // #define SOUND_MODE
-// #define IR_MODE
+#define IR_MODE
 // #define MUSCLE_MODE
-#define HEART_MODE
+// #define HEART_MODE
 
 int preset_time = 10000;
 int steps = 0;
@@ -869,16 +869,28 @@ void handleIRCommand(unsigned long command)
   switch (command)
   {
   case 0xF30CFF00: // ボタン1
-    setAllRGB("50,50,0,0");
+    waveAnimation();
     Serial.println("button 1");
     break;
   case 0xE718FF00: // ボタン2
-    setAllRGB("50,0,50,0");
+    shockAnimation();
     Serial.println("button 2");
     break;
   case 0xA15EFF00: // ボタン3
-    setAllRGB("50,0,0,50");
+    randomAnimation();
     Serial.println("button 3");
+    break;
+  case 0xF708FF00: // ボタン1
+    setAllRGB("50,50,0,0");
+    Serial.println("button 4");
+    break;
+  case 0xE31CFF00: // ボタン2
+    setAllRGB("50,0,50,0");
+    Serial.println("button 5");
+    break;
+  case 0xA55AFF00: // ボタン3
+    setAllRGB("50,0,0,50");
+    Serial.println("button 6");
     break;
   default:
     Serial.print("Unknown command: 0x");
