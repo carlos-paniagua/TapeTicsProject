@@ -1,15 +1,15 @@
 #include <M5Atom.h>
 
-// #define USE_BLE
+#define USE_BLE
 // #define USE_OSC
 
 // #define DEVICE_TEST
 // #ifdef DEVICE_TEST_2
 
 // #deifne USE_OTHER_FUNCTIONS
-// #define USE_SERIAL_COMMAND
+#define USE_SERIAL_COMMAND
 // #define SOUND_MODE
-#define IR_MODE
+// #define IR_MODE
 // #define MUSCLE_MODE
 // #define HEART_MODE
 
@@ -84,7 +84,7 @@ cppQueue messageQueue(sizeof(String), 1000, FIFO, false); // FIFOキューの初
 
 #define PIN 22
 #define NUMMAX 60
-#define NUMSETS 12
+#define NUMSETS 20
 #define NUMPIXELS (NUMMAX * 2)
 #define LED_TYPE WS2812
 #define COLOR_ORDER RGB
@@ -1209,16 +1209,17 @@ void HeartMode()
 void waveAnimation()
 {
   M5.dis.fillpix(LED_COLOR_YELLOW);
-
-  int waveLength = 11 / 2; // Define the length of the wave in terms of LED sets
+  int num = 20;
+  int waveLength = num / 2; // Define the length of the wave in terms of LED sets
   int wavePower = 50;      // Maximum brightness for the wave peak
   for (int cycle = 0; cycle < 3; cycle++)
   { // Number of wave cycles
-    for (int step = 0; step < 11 + waveLength; step++)
+    for (int step = 0; step < num + waveLength; step++)
     {
-      for (int i = 0; i < 11; i++)
+      for (int i = 0; i < num; i++)
       {
         int distance = abs(step - i);
+
         if (distance < waveLength)
         {
           power[i] = map(distance, 0, waveLength, wavePower, 0);
@@ -1228,12 +1229,12 @@ void waveAnimation()
           power[i] = 0;
         }
         red[i] = power[i];   // Set a fixed color for simplicity, you can modify as needed
-        green[i] = power[i]; // Set a fixed color for simplicity, you can modify as needed
-        blue[i] = power[i];  // Set a fixed color for simplicity, you can modify as needed
+        green[i] = 0; // Set a fixed color for simplicity, you can modify as needed
+        blue[i] = 0;  // Set a fixed color for simplicity, you can modify as needed
       }
       ledOn();
       // printRGB();
-      delay(200); // Adjust for desired wave speed
+      delay(100); // Adjust for desired wave speed
     }
   }
   M5.dis.fillpix(LED_COLOR_GREEN);
