@@ -6,12 +6,10 @@ This repository contains the hardware and software design files for TapeTics
 ## Table of Contents  
 
 ## Content
-[Controller_Data](https://github.com/carlos-paniagua/TapeTics/tree/main/Controller_Data)/ - Controller Board Circuit Information \
-[Tape_Data](https://github.com/carlos-paniagua/TapeTics/tree/main/Tape_Data)/ - Circuit Information on Tape Board\
-[Library](https://github.com/carlos-paniagua/TapeTics/tree/main/Library)/ - Library files for Arduino IDE\
-[TapeTicsCode](https://github.com/carlos-paniagua/TapeTics/tree/main/TapeTicsCode)/ - Arduino IDE .ino file\
-[GUI](https://github.com/carlos-paniagua/TapeTics/tree/main/GUI)/ - GUI controller developed in Max8\
-[PythonCode](https://github.com/carlos-paniagua/TapeTics/tree/main/PythonCode)/ - Used in conjunction with GUI
+Hardware/ -  Circuit Information \
+src/ - Source code open with platformIO \
+GUI/ - GUI controller using Max8 
+
 
 ## Software Version Information
 1. Arduino IDE 2.3.2\
@@ -24,6 +22,7 @@ This repository contains the hardware and software design files for TapeTics
    Bleak \
    pythonosc
 4. VScode
+5. PlatfromIO
 
 ## Component list
 
@@ -51,7 +50,7 @@ This repository contains the hardware and software design files for TapeTics
 [AHs 2025](https://augmented-humans.org/program/)
 
 ## Teaser Video (IEEE VR 2025)
-[!['altテキスト']('サムネイル画像のURL')]('https://youtu.be/rIjlwakAgLE')
+[!['youtube']('サムネイル画像のURL')]('https://youtu.be/rIjlwakAgLE')
 
 ## Aknowledgements
 [Nara Institute of Science and Technology](https://www.naist.jp/en/)\

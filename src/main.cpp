@@ -220,8 +220,8 @@ void initializeBLE()
 #ifdef USE_OSC
 #include <ArduinoOSCWiFi.h>
 
-const char *ssid = "Buffalo-G-6368";      // WiFi SSIDを設定
-const char *password = "5sxhmntn7nr7y";   // WiFi パスワードを設定
+const char *ssid = "ssid";      // WiFi SSIDを設定
+const char *password = "password";   // WiFi パスワードを設定
 const IPAddress ip(192, 168, 11, 43);     // デバイスの固定IPアドレス(M5stackのIP)
 const IPAddress gateway(192, 168, 11, 1); // ゲートウェイのIPアドレス(ルーターのIP)
 const IPAddress subnet(255, 255, 255, 0); // サブネットマスク
