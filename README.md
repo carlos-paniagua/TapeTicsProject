@@ -50,8 +50,7 @@ GUI/ - GUI controller using Max8
 [AHs 2025](https://augmented-humans.org/program/)
 
 ## Teaser Video (IEEE VR 2025)
-[!['youtube'](![vlcsnap-2025-03-08-07h14m56s418](https://github.com/user-attachments/assets/bf658b99-a638-4da6-b866-b7f51b7b6f2f)
-'')]('https://youtu.be/rIjlwakAgLE')
+[![youtube](https://github.com/user-attachments/assets/bf658b99-a638-4da6-b866-b7f51b7b6f2f)](https://youtu.be/rIjlwakAgLE)
 
 ## Aknowledgements
 [Nara Institute of Science and Technology](https://www.naist.jp/en/)\
@@ -61,8 +60,6 @@ Yutaro Hirao\
 Monica Perusquia-Hernandez\
 Hideaki UchiyamaKiyoshi Kiyokawa
 
-![naistlogo](![naist](https://github.com/user-attachments/assets/1c614394-9340-42a9-978d-b55780554d51)
-"sample")
+![naist](https://github.com/user-attachments/assets/1c614394-9340-42a9-978d-b55780554d51) "sample"
 
-![carelogo](![care](https://github.com/user-attachments/assets/809d1bfd-1610-4b89-982b-928aca172cf9)
- "sample")
+![care](https://github.com/user-attachments/assets/809d1bfd-1610-4b89-982b-928aca172cf9) "sample"
