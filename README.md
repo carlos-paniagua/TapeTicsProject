@@ -3,8 +3,6 @@ Carlos Paniagua, Hiroki Ota, Yutaro Hirao, Monica Perusquia-Hernandez, Hideaki U
 
 This repository contains the hardware and software design files for TapeTics
 
-## Table of Contents  
-
 ## Content
 Hardware/ -  Circuit Information \
 src/ - Source code open with platformIO \
@@ -39,9 +37,6 @@ GUI/ - GUI controller using Max8
 | Photocoupler |1 | [TLP627(TP1,F)](https://jlcpcb.com/partdetail/Toshiba-TLP627_TP1_F/C30336)      | 0.48 |
 | Voltage Regulator 16V to 5V| 1 | [SPX3819M5-L-5-0/TR](https://jlcpcb.com/partdetail/MaxLinear-SPX3819M5_L_5_0TR/C13417) |0.1463|
 | Voltage Regulator 16V to 3.3V  |1 | [SPX3819M5-L-3-3/TR](https://jlcpcb.com/partdetail/Maxlinear-SPX3819M5_L_3_3TR/C9055) |0.0828|
-
-## System Diagram
-
 
 ## Presented Conferences
 [MVE 2024](https://ken.ieice.org/ken/paper/20240315DcCd/)\
