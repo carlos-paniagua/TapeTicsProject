@@ -1,7 +1,9 @@
-# TapeTics
+# Tape-Tics: A Flexible and Modular Vibrotactile Feedback System for Rapid Prototyping
+Carlos Paniagua, Hiroki Ota, Yutaro Hirao, Monica Perusquia-Hernandez, Hideaki Uchiyama, Kiyoshi Kiyokawa
 
-## Introduction
-This repository contains the hardware and software design files for TapeTics, which is currently under review for presentation at [IEEE VR 2025](https://ieeevr.org/2025/).
+This repository contains the hardware and software design files for TapeTics
+
+## Table of Contents  
 
 ## Content
 [Controller_Data](https://github.com/carlos-paniagua/TapeTics/tree/main/Controller_Data)/ - Controller Board Circuit Information \
@@ -23,8 +25,7 @@ This repository contains the hardware and software design files for TapeTics, wh
    pythonosc
 4. VScode
 
-
-## Cost per Node
+## Component list
 
 | Parts                         |   Quantity | Value              |   Cost  ($) |
 |:------------------------------|-----------:|:-------------------|-----------------:|
@@ -40,6 +41,26 @@ This repository contains the hardware and software design files for TapeTics, wh
 | Voltage Regulator 16V to 5V| 1 | [SPX3819M5-L-5-0/TR](https://jlcpcb.com/partdetail/MaxLinear-SPX3819M5_L_5_0TR/C13417) |0.1463|
 | Voltage Regulator 16V to 3.3V  |1 | [SPX3819M5-L-3-3/TR](https://jlcpcb.com/partdetail/Maxlinear-SPX3819M5_L_3_3TR/C9055) |0.0828|
 
-<!-- |||Parts Total Cost|1.1428|
-|||Parts Assenbly Cost|115.63|
-|||PCB Cost|115.63| -->
+## System Diagram
+
+
+## Presented Conferences
+[MVE 2024](https://ken.ieice.org/ken/paper/20240315DcCd/)\
+[VRSJ 2024](https://conference.vrsj.org/ac2024/program/doc/1G-23.pdf)\
+[IEEE VR 2025](https://ieeevr.org/2025/program/posters/#:~:text=A%20Flexible%20Vibrotactile%20Feedback%20System%20for%20Rapid%20Prototyping%20(Booth%20ID%3A%201209))\
+[AHs 2025](https://augmented-humans.org/program/)
+
+## Teaser Video (IEEE VR 2025)
+[!['altテキスト']('サムネイル画像のURL')]('https://youtu.be/rIjlwakAgLE')
+
+## Aknowledgements
+[Nara Institute of Science and Technology](https://www.naist.jp/en/)\
+[Cybernetics and Reality Engineering (CARE) Laboratory](https://carelab.info/en/)\
+Hiroki Ota\
+Yutaro Hirao\
+Monica Perusquia-Hernandez\
+Hideaki UchiyamaKiyoshi Kiyokawa
+
+![naistlogo](img\care.png "sample")
+
+![carelogo](img\naist.png "sample")
