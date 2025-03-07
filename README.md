@@ -60,6 +60,6 @@ Yutaro Hirao\
 Monica Perusquia-Hernandez\
 Hideaki UchiyamaKiyoshi Kiyokawa
 
-![naist](https://github.com/user-attachments/assets/1c614394-9340-42a9-978d-b55780554d51) "sample"
+![naist](https://github.com/user-attachments/assets/1c614394-9340-42a9-978d-b55780554d51)
 
-![care](https://github.com/user-attachments/assets/809d1bfd-1610-4b89-982b-928aca172cf9) "sample"
+![care](https://github.com/user-attachments/assets/809d1bfd-1610-4b89-982b-928aca172cf9)
