@@ -53,7 +53,8 @@ GUI/ - GUI controller using Max8
 Hiroki Ota\
 Yutaro Hirao\
 Monica Perusquia-Hernandez\
-Hideaki UchiyamaKiyoshi Kiyokawa
+Hideaki Uchiyama\
+Kiyoshi Kiyokawa
 
 ![naist](https://github.com/user-attachments/assets/1c614394-9340-42a9-978d-b55780554d51)
 
