@@ -14,7 +14,12 @@ GUI/ - GUI controller using Max8
    Queue 2,0\
    NimBLE-Arduino 1.4.2\
    FastLED 3.7.3\
-   M5Stack 2.1.1
+   M5Atom 0.1.2\
+   M5Stack 2.1.1\
+   ArxContainer 0.7.0\
+   IRremote 4.4.1\
+   ArduinoOSC 0.5.1\
+   MAX30100lib 1.2.1
 2. Max 8.6.4
 3. Python 3.12\
    Bleak \
